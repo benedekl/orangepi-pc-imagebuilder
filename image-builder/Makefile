@@ -28,6 +28,7 @@
 #   copy filesystem images back into the image file
 
 
+
 all: .linux_done .boot_ready rootfs.tgz
 
 .uboot_cloned:
@@ -44,13 +45,6 @@ all: .linux_done .boot_ready rootfs.tgz
 
 boot.cmd:
 	cat /boot.cmd > $@
-#	echo 'setenv stdout=serial,vga' > $@
-#	echo 'setenv stderr=serial,vga' >> $@
-#	echo 'setenv video-mode sunxi:1024x768-24@60,monitor=dvi,hpd=0,edid=0' >> $@
-#	echo 'fatload mmc 0 0x46000000 boot/zImage' >> $@
-#	echo 'fatload mmc 0 0x49000000 boot/dtbs/sun8i-h3-orangepi-pc.dtb' >> $@
-#	echo 'setenv bootargs console=ttyS0,115200 console=tty0 earlyprintk root=/dev/mmcblk0p2 rootwait panic=1' >> $@
-#	echo 'bootz 0x46000000 - 0x49000000' >> $@
 
 boot.scr: .uboot_built boot.cmd
 	u-boot/tools/mkimage -C none -A arm -T script -d boot.cmd $@
@@ -100,9 +94,8 @@ boot.scr: .uboot_built boot.cmd
 
 
 rootfs.tgz:
-	#mmdebstrap --variant=minbase --architectures=armhf --mode=fakechroot --verbose \
-	#	--include systemd-sysv,udev,sudo,vim,libpam-runtime,iproute2,dhclient,resolvconf \
-	#	stretch rootfs.tgz
+	# The /dev/random and /dev/urandom must be bind mounted to be usable.
+	# Witout mounting them the openssh-server package installation fails.
 	mmdebstrap --architectures=armhf --mode=fakechroot --verbose --debug \
 		--setup-hook='mount -o bind "/dev/random" "$$1/dev/random"' \
 		--setup-hook='mount -o bind "/dev/urandom" "$$1/dev/urandom"' \
@@ -110,21 +103,8 @@ rootfs.tgz:
 		--customize-hook='umount "$$1/dev/urandom"' \
 		--essential-hook='echo tzdata tzdata/Areas select Europe | chroot "$$1" debconf-set-selections' \
 		--essential-hook='echo tzdata tzdata/Zones/Europe select Budapest | chroot "$$1" debconf-set-selections' \
-		--include vim,haveged,openssh-server \
+		--include openssh-server \
 		stretch rootfs.tgz
-	#--essential-hook='sed -i "1c#!/bin/sh -x" $$1/var/lib/dpkg/info/openssh-server.postinst' \
-
-
-
-# .bootimg_created:
-# 	truncate -s 3500M "boot.img"
-# 	touch $@
-# 
-# .bootimg_parted: .bootimg_created
-# 	parted -s boot.img mklabel msdos
-# 	parted -s -a none boot.img mkpart primary fat32 0 20M
-# 	parted -s -a none boot.img mkpart primary ext4 20M 100%
-# 	touch $@
 
 
 
@@ -179,7 +159,7 @@ part2_mnt:
 .part2_filled: rootfs.tgz .linux_modules_installed .bootp2_mkfs | part2_mnt
 	fuse2fs bootp2.img part2_mnt
 	tar -xzvf rootfs.tgz -C part2_mnt
-	#sed -i '/^root:/s/\*//' part2_mnt/etc/shadow
+	# sed -i '/^root:/s/\*//' part2_mnt/etc/shadow  # Empty password for root
 	sed -i '/^root:/croot:'$$(mkpasswd -m sha-512 passw0rd)':17261:0:99999:7:::' part2_mnt/etc/shadow
 	sed -i '/PermitRootLogin/cPermitRootLogin yes' part2_mnt/etc/ssh/sshd_config
 	cp -r /rootfs/. part2_mnt/
@@ -201,6 +181,7 @@ part2_mnt:
 	touch $@
 
 
+
 clean:
 	[ -f .uboot_cloned ] && cd u-boot && git clean -df
 	rm -f .uboot_configured .uboot_built
@@ -214,34 +195,3 @@ clean:
 
 
 PHONY: clean distclean
-
-
-	# git clone https://github.com/linux-sunxi/sunxi-tools.git ${BUILD_ROOT}/sunxi-tools
-	# git clone https://github.com/linux-sunxi/sunxi-boards.git ${BUILD_ROOT}/sunxi-boards
-	# git clone --branch v5.0 --depth 1 https://github.com/torvalds/linux.git ${BUILD_ROOT}/linux
-	# 
-	# ## u-boot
-	# #cd /usr/local/src/u-boot
-	# #
-	# #make CROSS_COMPILE=arm-linux-gnueabihf- orangepi_pc_defconfig
-	# ##make CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
-	# #make CROSS_COMPILE=arm-linux-gnueabihf-
-	# #
-	# ## sunxi-tools
-	# #cd /usr/local/src/sunxi-tools
-	# #
-	# #make
-	# #
-	# ## sunxi-boards
-	# #cd /usr/local/src/sunxi-boards
-	# #
-	# #/usr/local/src/sunxi-tools/fex2bin sys_config/h3/xunlong_orange_pi_pc.fex script.bin
-	# #
-	# 
-	# # kernel
-	# cd /usr/local/src/linux
-	# make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- sunxi_defconfig
-	# make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 zImage
-	# make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 dtbs
-	# make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 modules
-	# make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=output modules_install
