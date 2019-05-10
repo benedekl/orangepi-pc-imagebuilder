@@ -1,0 +1,14 @@
+---
+
+version: '3'
+services:
+  image-builder:
+    build: image-builder
+    volumes:
+      - ./build:/usr/local/build
+      - /dev/urandom:/dev/random
+      - /dev/urandom:/dev/urandom
+        #- /proc/sys/fs/binfmt_misc:/proc/sys/fs/binfmt_misc
+        #    cap_add:
+        #- SYS_ADMIN
+    privileged: true

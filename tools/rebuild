@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -xue
+
+cd "$(dirname "$(readlink -f "$0")")/.."
+
+#sudo rm -f build/rootfs.tgz
+docker-compose build
+docker-compose up
