@@ -154,7 +154,7 @@ part2_mnt:
 	fsck.ext4 -fp bootp2.img || [ $$? -eq 1 ]
 	touch $@
 
-.part1_burnt: partitions .part1_filled
+.part1_burnt: partitions .part2_filled
 	dd conv=notrunc if=bootp1.img of=boot.img bs=512 seek=$$(awk '/^ 1 / { gsub("s","",$$2); printf "%d\n", $$2 }' partitions)
 	touch $@
 
@@ -163,6 +163,7 @@ part2_mnt:
 	touch $@
 
 .finished: .uboot_burnt .part1_burnt .part2_burnt
+	echo "boot.img ready to flash."
 	touch $@
 
 

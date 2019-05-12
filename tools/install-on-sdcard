@@ -7,7 +7,7 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 docker-compose build
 docker-compose up
 CONTAINER=$(docker-compose ps | grep '^\w' | cut -d' ' -f1)
-docker cp ${CONTAINER}:/usr/local/image-builder/workdir/boot.img ..
+docker cp ${CONTAINER}:/usr/local/image-builder/workdir/boot.img .
 
 AMBIGOUS=0
 DEVICE=""
