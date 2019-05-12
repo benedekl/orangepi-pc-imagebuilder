@@ -129,29 +129,27 @@ bootp2.img: partitions
 	dd conv=notrunc if=u-boot/u-boot-sunxi-with-spl.bin of=boot.img bs=512 seek=16
 	touch $@
 
-part1_mnt:
-	mkdir -p $@
-
 part2_mnt:
 	mkdir -p $@
 
-.part1_filled: linux/arch/arm/boot/zImage linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb boot.scr .bootp1_mkfs | part1_mnt
-	fusefat -o rw+ bootp1.img part1_mnt
-	mkdir -p part1_mnt/boot/dtbs
-	cp linux/arch/arm/boot/zImage part1_mnt/boot/zImage
-	cp linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb part1_mnt/boot/dtbs/sun8i-h3-orangepi-pc.dtb
-	cp boot.scr part1_mnt/boot/boot.scr
-	fusermount -u part1_mnt
-	touch $@
-
-.part2_filled: rootfs.tgz .linux_modules_installed .bootp2_mkfs | part2_mnt
+.part2_filled: linux/arch/arm/boot/zImage linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb boot.scr .bootp1_mkfs rootfs.tgz .linux_modules_installed .bootp2_mkfs | part2_mnt
 	fuse2fs bootp2.img part2_mnt
-	tar -xzvf rootfs.tgz -C part2_mnt
+	# rootfs
+	tar -xzf rootfs.tgz -C part2_mnt
+	mkdir -p part2.mnt/lib
+	cp -R linux/output/lib/modules part2_mnt/lib
+	# boot
+	mkdir -p part2_mnt/boot
+	fusefat -o rw+ bootp1.img part2_mnt/boot
+	mkdir -p part2_mnt/boot/dtb
+	cp linux/arch/arm/boot/zImage part2_mnt/boot/zImage
+	cp linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb part2_mnt/boot/dtb/sun8i-h3-orangepi-pc.dtb
+	cp boot.scr part2_mnt/boot/boot.scr
+	# fixups
 	sed -i '/^root:/croot:'$$(mkpasswd -m sha-512 passw0rd)':17261:0:99999:7:::' part2_mnt/etc/shadow
 	sed -i '/PermitRootLogin/cPermitRootLogin yes' part2_mnt/etc/ssh/sshd_config
 	cp -R "${ASSETS}/rootfs/." part2_mnt/
-	mkdir -p part2.mnt/lib
-	cp -R linux/output/lib/modules part2_mnt/lib
+	fusermount -u part2_mnt/boot
 	fusermount -u part2_mnt
 	fsck.ext4 -fp bootp2.img || [ $$? -eq 1 ]
 	touch $@
