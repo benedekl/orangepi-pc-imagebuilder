@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -ue
+
+cd "$(dirname "$(readlink -f "$0")")/.."
+
+docker-compose build
+docker-compose up
+CONTAINER=$(docker-compose ps | grep '^\w' | cut -d' ' -f1)
+docker cp ${CONTAINER}:/usr/local/image-builder/workdir/boot.img ..
+
+AMBIGOUS=0
+DEVICE=""
+
+while read NAME SIZE TRAN MODEL ; do
+  printf "%-15s %-10s %-8s %s\n" $NAME $SIZE $TRAN $MODEL
+  if [ -n "$DEVICE" ] ; then
+    AMBIGOUS=1
+  else
+    DEVICE="/dev/$NAME"
+  fi
+done < <(lsblk -ndo name,size,tran,model | grep ' usb ')
+
+if [ $AMBIGOUS -eq 1 ] ; then
+  echo "Found multiple devices for installation candidate, exiting."
+else
+  if [ -n "$DEVICE" ] ; then
+    echo "Found device to install onto: $DEVICE"
+    echo "Install boot.img on $DEVICE? [y/n]" && read x && [ "$x" = "y" ] && \
+      sudo dd if=boot.img of="$DEVICE" bs=1M
+  else
+    echo "No available device found to install boot.img onto."
+  fi
+fi
