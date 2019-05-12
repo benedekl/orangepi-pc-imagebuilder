@@ -28,57 +28,45 @@
 #   copy filesystem images back into the image file
 
 
+UBOOT_REPOSITORY:=https://github.com/u-boot/u-boot.git
+LINUX_REPOSITORY:=https://github.com/torvalds/linux.git
 
-all: .linux_done .boot_ready rootfs.tgz
+
+
+all: .finished
 
 .uboot_cloned:
-	git clone https://github.com/u-boot/u-boot.git u-boot
+	git clone "${UBOOT_REPOSITORY}" u-boot
 	touch $@
 
 .uboot_configured: .uboot_cloned
 	cd u-boot && make CROSS_COMPILE=arm-linux-gnueabihf- orangepi_pc_defconfig
 	touch $@
 
-.uboot_built: .uboot_configured
+u-boot/u-boot-sunxi-with-spl.bin u-boot/tools/mkimage: .uboot_configured
 	cd u-boot && make CROSS_COMPILE=arm-linux-gnueabihf- -j4
-	touch $@
 
 boot.cmd:
-	cat /boot.cmd > $@
+	cat "${ASSETS}/boot.cmd" > $@
 
-boot.scr: .uboot_built boot.cmd
+boot.scr: u-boot/tools/mkimage boot.cmd
 	u-boot/tools/mkimage -C none -A arm -T script -d boot.cmd $@
-
-.uboot_done: boot.scr
-	touch $@
-
-
-
-.sunxi_tools_cloned:
-	git clone https://github.com/linux-sunxi/sunxi-tools.git sunxi-tools
-	touch $@
-
-.sunxi_boards_cloned:
-	git clone https://github.com/linux-sunxi/sunxi-boards.git sunxi-boards
-	touch $@
 
 
 
 .linux_cloned:
-	git clone --branch v5.0 --depth 1 https://github.com/torvalds/linux.git linux
+	git clone --branch v5.1 --depth 1 "${LINUX_REPOSITORY}" linux
 	touch $@
 
 .linux_configured: .linux_cloned
 	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- sunxi_defconfig
 	touch $@
 
-.linux_image_built: .linux_configured
+linux/arch/arm/boot/zImage: .linux_configured
 	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 zImage
-	touch $@
 
-.linux_dtbs_built: .linux_configured
+linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb: .linux_configured
 	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 dtbs
-	touch $@
 
 .linux_modules_built: .linux_configured
 	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j4 modules
@@ -86,9 +74,6 @@ boot.scr: .uboot_built boot.cmd
 
 .linux_modules_installed: .linux_modules_built
 	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=output modules_install
-	touch $@
-
-.linux_done: .linux_image_built .linux_dtbs_built .linux_modules_installed
 	touch $@
 
 
@@ -109,21 +94,24 @@ rootfs.tgz:
 
 
 boot.img:
-	truncate -s 300M $@
+	rm -f $@
+	truncate -s 350M $@
 
 .bootimg_parted: boot.img
 	parted -s $< mklabel msdos
-	parted -s -a none $< mkpart primary fat32 2048s 20M
-	parted -s -a none $< mkpart primary ext4 20M 100%
+	parted -s -a optimal $< mkpart primary fat32 2048s 20M
+	parted -s -a optimal $< mkpart primary ext4 20M 100%
 	touch $@
 
 partitions: .bootimg_parted
 	parted boot.img unit s print > $@
 
 bootp1.img: partitions
+	rm -f $@
 	truncate -s $$(awk '/^ 1 / { gsub("s","",$$4); printf "%d\n", $$4*512 }' partitions) $@
 
 bootp2.img: partitions
+	rm -f $@
 	truncate -s $$(awk '/^ 2 / { gsub("s","",$$4); printf "%d\n", $$4*512 }' partitions) $@
 
 .bootp1_mkfs: bootp1.img
@@ -136,7 +124,7 @@ bootp2.img: partitions
 
 
 
-.uboot_burnt: partitions .uboot_done
+.uboot_burnt: partitions u-boot/u-boot-sunxi-with-spl.bin
 	dd conv=notrunc if=/dev/zero of=boot.img bs=512 count=2047 seek=1
 	dd conv=notrunc if=u-boot/u-boot-sunxi-with-spl.bin of=boot.img bs=512 seek=16
 	touch $@
@@ -147,7 +135,7 @@ part1_mnt:
 part2_mnt:
 	mkdir -p $@
 
-.part1_filled: .linux_image_built .linux_dtbs_built boot.scr .bootp1_mkfs | part1_mnt
+.part1_filled: linux/arch/arm/boot/zImage linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb boot.scr .bootp1_mkfs | part1_mnt
 	fusefat -o rw+ bootp1.img part1_mnt
 	mkdir -p part1_mnt/boot/dtbs
 	cp linux/arch/arm/boot/zImage part1_mnt/boot/zImage
@@ -159,25 +147,24 @@ part2_mnt:
 .part2_filled: rootfs.tgz .linux_modules_installed .bootp2_mkfs | part2_mnt
 	fuse2fs bootp2.img part2_mnt
 	tar -xzvf rootfs.tgz -C part2_mnt
-	# sed -i '/^root:/s/\*//' part2_mnt/etc/shadow  # Empty password for root
 	sed -i '/^root:/croot:'$$(mkpasswd -m sha-512 passw0rd)':17261:0:99999:7:::' part2_mnt/etc/shadow
 	sed -i '/PermitRootLogin/cPermitRootLogin yes' part2_mnt/etc/ssh/sshd_config
-	cp -r /rootfs/. part2_mnt/
+	cp -R "${ASSETS}/rootfs/." part2_mnt/
 	mkdir -p part2.mnt/lib
-	cp -r linux/output/lib/modules part2_mnt/lib
+	cp -R linux/output/lib/modules part2_mnt/lib
 	fusermount -u part2_mnt
 	fsck.ext4 -fp bootp2.img || [ $$? -eq 1 ]
 	touch $@
 
-.part1_burnt: .part1_filled
+.part1_burnt: partitions .part1_filled
 	dd conv=notrunc if=bootp1.img of=boot.img bs=512 seek=$$(awk '/^ 1 / { gsub("s","",$$2); printf "%d\n", $$2 }' partitions)
 	touch $@
 
-.part2_burnt: .part2_filled
+.part2_burnt: partitions .part2_filled
 	dd conv=notrunc if=bootp2.img of=boot.img bs=512 seek=$$(awk '/^ 2 / { gsub("s","",$$2); printf "%d\n", $$2 }' partitions)
 	touch $@
 
-.boot_ready: .uboot_burnt .part1_burnt .part2_burnt
+.finished: .uboot_burnt .part1_burnt .part2_burnt
 	touch $@
 
 
