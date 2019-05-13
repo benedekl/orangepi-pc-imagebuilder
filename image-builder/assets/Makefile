@@ -48,7 +48,7 @@ all: .finished
 u-boot/u-boot-sunxi-with-spl.bin u-boot/tools/mkimage: .uboot_configured
 	cd u-boot && make CROSS_COMPILE=arm-linux-gnueabihf- -j4
 
-boot.cmd:
+boot.cmd: ${ASSETS}/boot.cmd
 	cat "$$ASSETS/boot.cmd" > $@
 
 boot.scr: u-boot/tools/mkimage boot.cmd
@@ -92,7 +92,7 @@ rootfs.tgz:
 		--essential-hook='echo tzdata tzdata/Areas select Europe | chroot "$$1" debconf-set-selections' \
 		--essential-hook='echo tzdata tzdata/Zones/Europe select Budapest | chroot "$$1" debconf-set-selections' \
 		--include u-boot-tools,cpufrequtils,initramfs-tools,openssh-server \
-		stretch rootfs.tgz
+		stretch $@
 
 
 
