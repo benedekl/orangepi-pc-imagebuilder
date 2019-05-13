@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -xue
+set -ue
 
 NEWROOT="$1"; shift
 
@@ -47,8 +47,9 @@ mount_if_not /dev
 mount_if_not /dev/shm
 mount_if_not /dev/pts
 
+cp -f ${NEWROOT}/etc/resolv.conf ${NEWROOT}/etc/resolv.conf.orig
 cp -f /etc/resolv.conf ${NEWROOT}/etc/resolv.conf
-CLEANUP+=("rm -f $NEWROOT/etc/resolv.conf")
+CLEANUP+=("mv $NEWROOT/etc/resolv.conf.orig $NEWROOT/etc/resolv.conf")
 
 echo $NEWROOT > $NEWROOT/etc/debian_chroot
 CLEANUP+=("rm -f $NEWROOT/etc/debian_chroot")
