@@ -100,7 +100,7 @@ boot.img:
 
 .bootimg_parted: boot.img
 	parted -s $< mklabel msdos
-	parted -s -a optimal $< mkpart primary fat32 2048s 20M
+	parted -s -a optimal $< mkpart primary ext3 2048s 20M
 	parted -s -a optimal $< mkpart primary ext4 20M 100%
 	touch $@
 
@@ -116,7 +116,7 @@ bootp2.img: partitions
 	truncate -s $$(awk '/^ 2 / { gsub("s","",$$4); printf "%d\n", $$4*512 }' partitions) $@
 
 .bootp1_mkfs: bootp1.img
-	mkfs -t vfat $<
+	mkfs -t ext3 $<
 	touch $@
 
 .bootp2_mkfs: bootp2.img
@@ -142,12 +142,12 @@ part2_mnt:
 	cp /usr/bin/qemu-arm-static part2_mnt/usr/bin
 	# boot
 	mkdir -p part2_mnt/boot
-	fusefat -o rw+ bootp1.img part2_mnt/boot
+	fuse2fs bootp1.img part2_mnt/boot
 	mkdir -p part2_mnt/boot/dtb
 	cp linux/arch/arm/boot/zImage part2_mnt/boot/vmlinuz-${LINUX_VERSION}
 	cp linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb part2_mnt/boot/dtb/sun8i-h3-orangepi-pc.dtb
 	echo "root=UUID=$$(blkid -o value -s UUID bootp2.img)" > "part2_mnt/boot/bootEnv.txt"
-	echo "#UUID=$$(blkid -o value -s UUID bootp1.img) /boot vfat defaults 0 1" > "part2_mnt/etc/fstab"
+	echo "UUID=$$(blkid -o value -s UUID bootp1.img) /boot ext3 defaults,commit=600 0 1" > "part2_mnt/etc/fstab"
 	echo "UUID=$$(blkid -o value -s UUID bootp2.img) / ext4 defaults,commit=600 0 1" >> "part2_mnt/etc/fstab"
 	cp boot.scr part2_mnt/boot/boot.scr
 	$$ASSETS/chroot-wrapper part2_mnt /usr/sbin/update-initramfs -c -k ${LINUX_VERSION}
@@ -159,6 +159,7 @@ part2_mnt:
 	rm part2_mnt/usr/bin/qemu-arm-static
 	fusermount -u part2_mnt/boot
 	fusermount -u part2_mnt
+	fsck.ext3 -fp bootp1.img || [ $$? -eq 1 ]
 	fsck.ext4 -fp bootp2.img || [ $$? -eq 1 ]
 	touch $@
 
