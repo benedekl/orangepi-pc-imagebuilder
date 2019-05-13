@@ -29,8 +29,10 @@
 
 
 UBOOT_REPOSITORY:=https://github.com/u-boot/u-boot.git
-LINUX_REPOSITORY:=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
-LINUX_VERSION=4.19.42
+
+LINUX_REPOSITORY:=https://github.com/rkojedzinszky/linux-kernel
+LINUX_BRANCH=linux-4.19.y-krichy-arm
+LINUX_VERSION=4.19.42+
 
 
 all: .finished
@@ -55,7 +57,7 @@ boot.scr: u-boot/tools/mkimage boot.cmd
 
 
 .linux_cloned:
-	git clone --branch "v${LINUX_VERSION}" --depth 1 "${LINUX_REPOSITORY}" linux
+	git clone --branch "${LINUX_BRANCH}" --depth 1 "${LINUX_REPOSITORY}" linux
 	touch $@
 
 .linux_configured: .linux_cloned
