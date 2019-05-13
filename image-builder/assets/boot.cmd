@@ -30,7 +30,7 @@ fdt addr ${fdt_addr_r}
 fdt resize 65536
 
 echo "Loading ${kernel} and ${uinitrd}"
-setenv bootargs console=ttyS0,115200 console=tty1 root=${root} rw rootwait panic=10 ${extra}
+setenv bootargs console=ttyS0,115200 root=${root} rw rootwait panic=10 ${extra}
 load ${devtype} ${devnum}:${bootpart} ${kernel_addr_r} ${prefix}${kernel}
 load ${devtype} ${devnum}:${bootpart} ${ramdisk_addr_r} ${prefix}${uinitrd}
 
