@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -xue
+
+NEWROOT="$1"; shift
+
+
+CLEANUP=( )
+cleanup() {
+  if [ ${#CLEANUP[*]} -gt 0 ]; then
+    LAST_ELEMENT=$((${#CLEANUP[*]}-1))
+    REVERSE_INDEXES=$(seq ${LAST_ELEMENT} -1 0)
+    for i in $REVERSE_INDEXES; do
+      ${CLEANUP[$i]}
+    done
+  fi
+}
+trap cleanup EXIT
+
+
+function mount_if_not() {
+   dir=$1
+   if mount | grep -q $NEWROOT$dir ; then
+      echo Skipping mounting $dir
+   else
+      echo "Bind $dir to $NEWROOT$dir"
+      mount --bind $dir $NEWROOT$dir
+      CLEANUP+=("umount $NEWROOT$dir")
+   fi
+}
+
+## for references
+# /dev/sda2 on / type ext3 (rw,acl,user_xattr)
+# proc on /proc type proc (rw)
+# sysfs on /sys type sysfs (rw)
+# devtmpfs on /dev type devtmpfs (rw,mode=0755)
+# tmpfs on /dev/shm type tmpfs (rw,mode=1777)
+# devpts on /dev/pts type devpts (rw,mode=0620,gid=5)
+# fusectl on /sys/fs/fuse/connections type fusectl (rw)
+# securityfs on /sys/kernel/security type securityfs (rw)
+# none on /var/lib/ntp/proc type proc (ro,nosuid,nodev)
+# /dev/mapper/datavg01-data01 on /data01 type ext4 (ro)
+
+mount_if_not /proc
+mount_if_not /sys
+mount_if_not /dev
+mount_if_not /dev/shm
+mount_if_not /dev/pts
+
+cp -f /etc/resolv.conf ${NEWROOT}/etc/resolv.conf
+CLEANUP+=("rm -f $NEWROOT/etc/resolv.conf")
+
+echo $NEWROOT > $NEWROOT/etc/debian_chroot
+CLEANUP+=("rm -f $NEWROOT/etc/debian_chroot")
+chroot $NEWROOT "$@"

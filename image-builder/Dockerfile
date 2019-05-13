@@ -41,6 +41,7 @@ RUN dpkg --add-architecture armhf \
       fusefat \
       dosfstools \ 
       whois \
+      libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 #      u-boot-tools \

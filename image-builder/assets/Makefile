@@ -29,8 +29,8 @@
 
 
 UBOOT_REPOSITORY:=https://github.com/u-boot/u-boot.git
-LINUX_REPOSITORY:=https://github.com/torvalds/linux.git
-
+LINUX_REPOSITORY:=git://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+LINUX_VERSION=4.19.42
 
 
 all: .finished
@@ -47,7 +47,7 @@ u-boot/u-boot-sunxi-with-spl.bin u-boot/tools/mkimage: .uboot_configured
 	cd u-boot && make CROSS_COMPILE=arm-linux-gnueabihf- -j4
 
 boot.cmd:
-	cat "${ASSETS}/boot.cmd" > $@
+	cat "$$ASSETS/boot.cmd" > $@
 
 boot.scr: u-boot/tools/mkimage boot.cmd
 	u-boot/tools/mkimage -C none -A arm -T script -d boot.cmd $@
@@ -55,11 +55,12 @@ boot.scr: u-boot/tools/mkimage boot.cmd
 
 
 .linux_cloned:
-	git clone --branch v5.1 --depth 1 "${LINUX_REPOSITORY}" linux
+	git clone --branch "v${LINUX_VERSION}" --depth 1 "${LINUX_REPOSITORY}" linux
 	touch $@
 
 .linux_configured: .linux_cloned
-	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- sunxi_defconfig
+	cp "$$ASSETS/kernel-config" linux/.config
+	cd linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- oldconfig
 	touch $@
 
 linux/arch/arm/boot/zImage: .linux_configured
@@ -88,14 +89,14 @@ rootfs.tgz:
 		--customize-hook='umount "$$1/dev/urandom"' \
 		--essential-hook='echo tzdata tzdata/Areas select Europe | chroot "$$1" debconf-set-selections' \
 		--essential-hook='echo tzdata tzdata/Zones/Europe select Budapest | chroot "$$1" debconf-set-selections' \
-		--include openssh-server \
+		--include u-boot-tools,cpufrequtils,initramfs-tools,openssh-server \
 		stretch rootfs.tgz
 
 
 
 boot.img:
 	rm -f $@
-	truncate -s 350M $@
+	truncate -s 400M $@
 
 .bootimg_parted: boot.img
 	parted -s $< mklabel msdos
@@ -138,17 +139,24 @@ part2_mnt:
 	tar -xzf rootfs.tgz -C part2_mnt
 	mkdir -p part2.mnt/lib
 	cp -R linux/output/lib/modules part2_mnt/lib
+	cp /usr/bin/qemu-arm-static part2_mnt/usr/bin
 	# boot
 	mkdir -p part2_mnt/boot
 	fusefat -o rw+ bootp1.img part2_mnt/boot
 	mkdir -p part2_mnt/boot/dtb
-	cp linux/arch/arm/boot/zImage part2_mnt/boot/zImage
+	cp linux/arch/arm/boot/zImage part2_mnt/boot/vmlinuz-${LINUX_VERSION}
 	cp linux/arch/arm/boot/dts/sun8i-h3-orangepi-pc.dtb part2_mnt/boot/dtb/sun8i-h3-orangepi-pc.dtb
+	echo "root=UUID=$$(blkid -o value -s UUID bootp2.img)" > "part2_mnt/boot/bootEnv.txt"
+	echo "#UUID=$$(blkid -o value -s UUID bootp1.img) /boot vfat defaults 0 1" > "part2_mnt/etc/fstab"
+	echo "UUID=$$(blkid -o value -s UUID bootp2.img) / ext4 defaults,commit=600 0 1" >> "part2_mnt/etc/fstab"
 	cp boot.scr part2_mnt/boot/boot.scr
+	$$ASSETS/chroot-wrapper part2_mnt /usr/sbin/update-initramfs -c -k ${LINUX_VERSION}
 	# fixups
 	sed -i '/^root:/croot:'$$(mkpasswd -m sha-512 passw0rd)':17261:0:99999:7:::' part2_mnt/etc/shadow
 	sed -i '/PermitRootLogin/cPermitRootLogin yes' part2_mnt/etc/ssh/sshd_config
 	cp -R "${ASSETS}/rootfs/." part2_mnt/
+	$$ASSETS/chroot-wrapper part2_mnt /etc/kernel/postinst.d/zz_boot ${LINUX_VERSION}
+	rm part2_mnt/usr/bin/qemu-arm-static
 	fusermount -u part2_mnt/boot
 	fusermount -u part2_mnt
 	fsck.ext4 -fp bootp2.img || [ $$? -eq 1 ]
